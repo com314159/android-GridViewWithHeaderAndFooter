@@ -15,6 +15,9 @@
  */
 package in.srain.cube.views;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.database.DataSetObservable;
@@ -24,10 +27,15 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.*;
-
-import java.lang.reflect.Field;
-import java.util.ArrayList;
+import android.widget.AbsListView;
+import android.widget.Adapter;
+import android.widget.AdapterView;
+import android.widget.Filter;
+import android.widget.Filterable;
+import android.widget.FrameLayout;
+import android.widget.GridView;
+import android.widget.ListAdapter;
+import android.widget.WrapperListAdapter;
 
 /**
  * A {@link GridView} that supports adding header rows in a
@@ -37,6 +45,8 @@ import java.util.ArrayList;
  */
 public class GridViewWithHeaderAndFooter extends GridView {
 
+	private static final String TAG = "GridViewWithHeaderAndFooter";
+	
     public static boolean DEBUG = false;
 
     /**
@@ -66,8 +76,43 @@ public class GridViewWithHeaderAndFooter extends GridView {
 
     private ArrayList<FixedViewInfo> mHeaderViewInfos = new ArrayList<FixedViewInfo>();
     private ArrayList<FixedViewInfo> mFooterViewInfos = new ArrayList<FixedViewInfo>();
+    
+    private int mCurrentSelectedPosition = -1;
+   
+    private AdapterView.OnItemSelectedListener mItemSeletedListener = new OnItemSelectedListener() {
 
+		@Override
+		public void onItemSelected(AdapterView<?> parent, View view,
+				int position, long id) {
+			
+			
+			if (isValidPosition(position)) {
+				mCurrentSelectedPosition = position;
+
+				if (mSetedItemSeletedListener!=null) {
+					mSetedItemSeletedListener.onItemSelected(parent, view, position, id);
+				}
+			} 
+			else {
+				int validPosition = getValidPosition(position);
+				setSelection(validPosition);
+			}
+		}
+
+		@Override
+		public void onNothingSelected(AdapterView<?> parent) {
+			if (mSetedItemSeletedListener != null) {
+				mSetedItemSeletedListener.onNothingSelected(parent);
+			}
+		}
+    	
+	};
+	
+	
+	private AdapterView.OnItemSelectedListener mSetedItemSeletedListener = null;
+	
     private void initHeaderGridView() {
+    	super.setOnItemSelectedListener(mItemSeletedListener);
     }
 
     public GridViewWithHeaderAndFooter(Context context) {
@@ -93,6 +138,7 @@ public class GridViewWithHeaderAndFooter extends GridView {
             ((HeaderViewGridAdapter) adapter).setNumColumns(getNumColumnsCompatible());
             ((HeaderViewGridAdapter) adapter).setRowHeight(getRowHeight());
         }
+         mNumColumns =  getNumColumnsCompatible();
     }
 
     @Override
@@ -396,6 +442,17 @@ public class GridViewWithHeaderAndFooter extends GridView {
         } else {
             setSelection(lastPos);
         }
+    }
+    
+    /**
+     * This listener will skip the invalid place position
+     * the selected position is the position with gridview header and place position
+     * You should use {@link #getRelativePosition(int)} to get the right position
+     */
+    @Override
+    public void setOnItemSelectedListener(
+    		android.widget.AdapterView.OnItemSelectedListener listener) {
+    	mSetedItemSeletedListener = listener;
     }
 
     @Override
@@ -831,5 +888,177 @@ public class GridViewWithHeaderAndFooter extends GridView {
         public void notifyDataSetChanged() {
             mDataSetObservable.notifyChanged();
         }
+    }
+    
+	private int getValidPosition(int  position) {
+		int pos = 0;
+		
+		if (isInHeader(position)) {
+			if (position > mCurrentSelectedPosition) {
+				pos = mCurrentSelectedPosition + mNumColumns;
+
+			}
+			else if (position < mCurrentSelectedPosition) {
+				pos = mCurrentSelectedPosition - mNumColumns;
+
+			}
+		} else if (isInFooter(position)) {
+			if (position > mCurrentSelectedPosition) {
+				pos = mCurrentSelectedPosition;
+			} else {
+				pos = mCurrentSelectedPosition - mNumColumns;
+			}
+		}
+		
+		if (!isValidPosition(pos)) {
+			pos = pos/mNumColumns * mNumColumns;
+		}
+		
+		return pos;
+	}
+	
+	private boolean isValidPosition(int gridPos) {
+		if (gridPos < 0) {
+			return false;
+		}
+		
+		if (  isValidHeader(gridPos) || isInWrapAdapter(gridPos)
+			|| isValidFooterPosition(gridPos) ) {
+			return true;
+		}
+		
+		return false;
+	}
+	
+	private boolean isInHeader(int gridPos) {
+		if (gridPos < 0) {
+			return false;
+		}
+		
+		if (mHeaderViewInfos== null || mHeaderViewInfos.isEmpty()) {
+			return false;
+		}
+
+		int numHeadersAndPlaceholders = mHeaderViewInfos.size() * mNumColumns;
+		
+		//头部
+		if (gridPos < numHeadersAndPlaceholders) {
+			return true;
+		}
+		
+		return false;
+	}
+	
+	private boolean isValidHeader(int gridPos) {
+		
+		if (!isInHeader(gridPos)) {
+			return false;
+		}
+		
+		return gridPos % mNumColumns == 0;
+	}
+	
+	private boolean isInFooter(int pos) {
+		if (pos < 0) {
+			return false;
+		}
+		
+		if (mFooterViewInfos==null || mFooterViewInfos.isEmpty()) {
+			return false;
+		}		
+		
+		int numHeadersAndPlaceholders = mHeaderViewInfos.size() * mNumColumns;
+		
+		return  pos >= numHeadersAndPlaceholders + getWrappedAdapterCount();
+	}
+	
+	private boolean isValidFooterPosition(int pos) {
+		if (!isInFooter(pos)) {
+			return false;
+		}
+		
+		return pos % mNumColumns == 0;
+	}
+	
+	private boolean isInWrapAdapter(int gridPos) {
+		if (gridPos < 0) {
+			return false;
+		}
+		
+		if (mHeaderViewInfos== null || mHeaderViewInfos.isEmpty()) {
+			return true;
+		}
+
+		int numHeadersAndPlaceholders = mHeaderViewInfos.size() * mNumColumns;
+		
+		if (gridPos >= numHeadersAndPlaceholders && gridPos < numHeadersAndPlaceholders + getWrappedAdapterCount()){
+			return true;
+		}
+		
+		return false;
+	}
+    
+    public RelativePosition getRelativePosition(int position) {
+    	
+    	RelativePosition pos = new RelativePosition();
+    	if (isInHeader(position)) {
+    		pos.mPosition = position/mNumColumns;
+    		pos.mPositionType = RelativePosition.POSITION_HEAD;
+    	} else if (isInWrapAdapter(position)) {
+    		pos.mPosition = position - getNumHeadersAndPlaceholders();
+    		pos.mPositionType = RelativePosition.POSITION_ADAPTER;
+    	} else if (isInFooter(position)) {
+    		pos.mPositionType = RelativePosition.POSITION_FOOTER; 
+    		position = position - getNumHeadersAndPlaceholders() - getWrappedAdapterCount();
+    		pos.mPosition = position/mNumColumns;
+    	}
+    	
+    	return pos;
+    }
+    
+	private int getNumHeadersAndPlaceholders() {
+		if (mHeaderViewInfos== null || mHeaderViewInfos.isEmpty()) {
+			return 0;
+		}
+
+		int numHeadersAndPlaceholders = mHeaderViewInfos.size() * mNumColumns;
+		return numHeadersAndPlaceholders;
+	}
+	
+	
+	public int getWrappedAdapterCount() {
+		Adapter adapter = getAdapter();
+		if (adapter == null) {
+			return 0;
+		}
+		
+		if (adapter instanceof HeaderViewGridAdapter) {
+			if (((HeaderViewGridAdapter)adapter).getWrappedAdapter() != null) {
+				return ((HeaderViewGridAdapter)adapter).getWrappedAdapter().getCount();
+			}
+			return 0;
+		}
+		
+		return adapter.getCount();
+	}
+
+    
+    /**
+     * positionType: Where is the position, in head, footer or in wrapped Adapter
+     * position: The relative position start at index 0
+     * 
+     * for example 
+     * position = 1
+     * positionType =  POSITION_FOOTER  
+     * 
+     * means the second footer in this gridview
+     */
+    public static class RelativePosition {
+    	public static int POSITION_HEAD = 0;
+    	public static int POSITION_ADAPTER = 1;
+    	public static int POSITION_FOOTER = 2;
+    	
+    	public int mPosition = -1;
+    	public int mPositionType = 0;
     }
 }
