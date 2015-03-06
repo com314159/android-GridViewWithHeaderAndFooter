@@ -908,6 +908,8 @@ public class GridViewWithHeaderAndFooter extends GridView {
 			} else {
 				pos = mCurrentSelectedPosition - mNumColumns;
 			}
+		} else {
+			pos = position;
 		}
 		
 		if (!isValidPosition(pos)) {
@@ -984,12 +986,8 @@ public class GridViewWithHeaderAndFooter extends GridView {
 		if (gridPos < 0) {
 			return false;
 		}
-		
-		if (mHeaderViewInfos== null || mHeaderViewInfos.isEmpty()) {
-			return true;
-		}
 
-		int numHeadersAndPlaceholders = mHeaderViewInfos.size() * mNumColumns;
+		int numHeadersAndPlaceholders = getNumHeadersAndPlaceholders();
 		
 		if (gridPos >= numHeadersAndPlaceholders && gridPos < numHeadersAndPlaceholders + getWrappedAdapterCount()){
 			return true;
